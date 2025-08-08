@@ -1,0 +1,91 @@
+TABLES: EKKO, EKPO.
+TYPE-POOLS: SLIS.
+TYPES: BEGIN OF ekko,
+         ebeln TYPE ekko-ebeln,
+         bukrs TYPE ekko-bukrs,
+         aedat TYPE ekko-aedat,
+         ernam TYPE ekko-ernam,
+       END OF ekko.
+TYPES: BEGIN OF ekpo,
+         ebeln TYPE ekpo-ebeln,
+         ebelp TYPE ekpo-ebelp,
+         matnr TYPE ekpo-matnr,
+         werks TYPE ekpo-werks,
+       END OF ekpo.
+TYPES: BEGIN OF ts,
+         ebeln TYPE ekko-ebeln,
+         bukrs TYPE ekko-bukrs,
+         aedat TYPE ekko-aedat,
+         ernam TYPE ekko-ernam,
+         ebelp TYPE ekpo-ebelp,
+         matnr TYPE ekpo-matnr,
+         werks TYPE ekpo-werks,
+       END OF ts.
+DATA: IT_FCAT TYPE slis_t_fieldcat_alv,
+      WA_FCAT TYPE slis_fieldcat_alv.
+DATA: IT_EKKO TYPE TABLE OF ekko,
+      WA_EKKO TYPE ekko.
+DATA: IT_EKPO TYPE TABLE OF ekpo,
+      WA_EKPO TYPE ekpo.
+DATA: IT_TS TYPE TABLE OF ts,
+      WA_TS TYPE ts.
+SELECT-OPTIONS: S_EBELN FOR ekko-ebeln.
+START-OF-SELECTION.
+  SELECT ebeln bukrs aedat ernam FROM ekko INTO TABLE IT_EKKO WHERE ebeln IN S_EBELN.
+  SELECT ebeln ebelp matnr werks FROM ekpo INTO TABLE IT_EKPO WHERE ebeln IN S_EBELN.
+  LOOP AT IT_EKPO INTO WA_EKPO.
+    WA_TS-ebeln = WA_EKPO-ebeln.
+    WA_TS-ebelp = WA_EKPO-ebelp.
+    WA_TS-matnr = WA_EKPO-matnr.
+    WA_TS-werks = WA_EKPO-werks.
+    READ TABLE IT_EKKO INTO WA_EKKO WITH KEY ebeln = WA_EKPO-ebeln.
+    WA_TS-bukrs  = WA_EKKO-bukrs.
+    WA_TS-aedat  = WA_EKKO-aedat.
+    WA_TS-ernam  = WA_EKKO-ernam.
+    APPEND WA_TS TO IT_TS.
+    CLEAR WA_TS.
+  ENDLOOP.
+  WA_FCAT-FIELDNAME = 'EBELN'.
+  WA_FCAT-SELTEXT_L = 'PO NUMBER'.
+  WA_FCAT-EMPHASIZE = 'C3'.
+  APPEND WA_FCAT TO IT_FCAT.
+  CLEAR WA_FCAT.
+  WA_FCAT-FIELDNAME = 'BUKRS'.
+  WA_FCAT-SELTEXT_L = 'COMPANY CODE'.
+  WA_FCAT-EMPHASIZE = 'C2'.
+  APPEND WA_FCAT TO IT_FCAT.
+  CLEAR WA_FCAT.
+  WA_FCAT-FIELDNAME = 'AEDAT'.
+  WA_FCAT-SELTEXT_L = 'PO DATE'.
+  WA_FCAT-EMPHASIZE = 'C4'.
+  APPEND WA_FCAT TO IT_FCAT.
+  CLEAR WA_FCAT.
+  WA_FCAT-FIELDNAME = 'ERNAM'.
+  WA_FCAT-SELTEXT_L = 'PO DOCUMENT'.
+  WA_FCAT-EMPHASIZE = 'C5'.
+  APPEND WA_FCAT TO IT_FCAT.
+  CLEAR WA_FCAT.
+  WA_FCAT-FIELDNAME = 'EBELP'.
+  WA_FCAT-SELTEXT_L = 'PO DOC'.
+  WA_FCAT-EMPHASIZE = 'C6'.
+  APPEND WA_FCAT TO IT_FCAT.
+  CLEAR WA_FCAT.
+  WA_FCAT-FIELDNAME = 'MATNR'.
+  WA_FCAT-SELTEXT_L = 'MATERIAL NUMBER'.
+  WA_FCAT-EMPHASIZE = 'C7'.
+  APPEND WA_FCAT TO IT_FCAT.
+  CLEAR WA_FCAT.
+  WA_FCAT-FIELDNAME = 'WERKS'.
+  WA_FCAT-SELTEXT_L = 'PLANT'.
+  WA_FCAT-EMPHASIZE = 'C3'.
+  APPEND WA_FCAT TO IT_FCAT.
+  CLEAR WA_FCAT.
+  CALL FUNCTION 'REUSE_ALV_LIST_DISPLAY'
+    EXPORTING
+      I_CALLBACK_PROGRAM = SY-REPID
+      IT_FIELDCAT        = IT_FCAT
+    TABLES
+      T_OUTTAB           = IT_TS.
+  IF SY-SUBRC <> 0.
+    " Handle errors if needed
+  ENDIF.
