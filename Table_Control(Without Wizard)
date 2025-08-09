@@ -1,0 +1,27 @@
+REPORT zprogram15_ak.
+
+TABLES: zsch.
+
+DATA: it  TYPE TABLE OF zsch,
+      wal TYPE zsch,
+      wa  TYPE zsch.
+
+CONTROLS zoviyatc TYPE TABLEVIEW USING SCREEN 9003.
+
+SELECT-OPTIONS: s_rol FOR zsch-srol.
+
+START-OF-SELECTION.
+  SELECT * FROM zsch INTO TABLE it WHERE srol IN s_rol.
+  CALL SCREEN 9003.
+
+MODULE status_9003 OUTPUT.
+  SET PF-STATUS 'ZBUTTON'.
+  SET TITLEBAR 'xxx'.
+ENDMODULE.
+
+MODULE user_command_9003 INPUT.
+  CASE sy-ucomm.
+    WHEN 'BACK' OR 'CANCEL' OR 'EXIT'.
+      LEAVE PROGRAM.
+  ENDCASE.
+ENDMODULE.
