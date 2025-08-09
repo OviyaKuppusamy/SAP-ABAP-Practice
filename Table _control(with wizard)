@@ -1,0 +1,294 @@
+* PROGRAM : ZPROGRAM13_AK
+* MULTIPLE DATA SCREEN USING TABLE CONTROL (WIZARD)
+REPORT ZPROGRAM13_AK.
+
+TABLES: ZSCH.
+
+* internal table and workarea
+DATA: IT TYPE STANDARD TABLE OF ZSCH WITH EMPTY KEY,
+      WA TYPE ZSCH.
+
+* tablecontrol declaration (on screen 9003)
+CONTROLS: ZAKTCW TYPE TABLEVIEW USING SCREEN 9003.
+
+DATA: G_ZAKTCW_LINES TYPE SY-LOOPC,
+      OK_CODE       LIKE SY-UCOMM.
+
+*--------------------------------------------------------------------*
+* Output module for TC 'ZAKTCW' (do not change)
+*--------------------------------------------------------------------*
+MODULE ZAKTCW_CHANGE_TC_ATTR OUTPUT.
+  DESCRIBE TABLE IT LINES ZAKTCW-LINES.
+ENDMODULE.
+
+*--------------------------------------------------------------------*
+* Output module: get lines of tablecontrol
+*--------------------------------------------------------------------*
+MODULE ZAKTCW_GET_LINES OUTPUT.
+  G_ZAKTCW_LINES = SY-LOOPC.
+ENDMODULE.
+
+*--------------------------------------------------------------------*
+* Input module: process user command for TC 'ZAKTCW'
+*--------------------------------------------------------------------*
+MODULE ZAKTCW_USER_COMMAND INPUT.
+  OK_CODE = SY-UCOMM.
+  PERFORM USER_OK_TC USING 'ZAKTCW' 'IT' '' CHANGING OK_CODE.
+  SY-UCOMM = OK_CODE.
+ENDMODULE.
+
+*--------------------------------------------------------------------*
+* Form USER_OK_TC
+*--------------------------------------------------------------------*
+FORM USER_OK_TC USING    P_TC_NAME TYPE DYNNAM
+                       P_TABLE_NAME
+                       P_MARK_NAME
+               CHANGING P_OK LIKE SY-UCOMM.
+
+DATA: L_OK     TYPE SY-UCOMM,
+      L_OFFSET TYPE I.
+
+SEARCH P_OK FOR P_TC_NAME.
+IF SY-SUBRC <> 0.
+  EXIT.
+ENDIF.
+
+L_OFFSET = STRLEN( P_TC_NAME ) + 1.
+L_OK = P_OK+L_OFFSET.
+
+CASE L_OK.
+  WHEN 'INSR'.
+    PERFORM fcode_insert_row USING P_TC_NAME P_TABLE_NAME.
+    CLEAR P_OK.
+  WHEN 'DELE'.
+    PERFORM fcode_delete_row USING P_TC_NAME
+                                   P_TABLE_NAME
+                                   P_MARK_NAME.
+    CLEAR P_OK.
+  WHEN 'P--' OR 'P-' OR 'P+' OR 'P++'.
+    PERFORM compute_scrolling_in_tc USING P_TC_NAME L_OK.
+    CLEAR P_OK.
+  WHEN 'MARK'.
+    PERFORM fcode_tc_mark_lines USING P_TC_NAME
+                                     P_TABLE_NAME
+                                     P_MARK_NAME.
+    CLEAR P_OK.
+  WHEN 'DMRK'.
+    PERFORM fcode_tc_demark_lines USING P_TC_NAME
+                                       P_TABLE_NAME
+                                       P_MARK_NAME.
+    CLEAR P_OK.
+  WHEN 'SASCEND' OR 'SDESCEND'.
+    PERFORM fcode_sort_tc USING P_TC_NAME L_OK.
+    CLEAR P_OK.
+ENDCASE.
+
+ENDFORM.
+
+*--------------------------------------------------------------------*
+* Form FCODE_INSERT_ROW
+*--------------------------------------------------------------------*
+FORM fcode_insert_row USING P_TC_NAME TYPE DYNNAM
+                           P_TABLE_NAME
+                           P_MARK_NAME.
+
+DATA: L_LINES_NAME  LIKE FIELD-NAME,
+      L_SELLINE     TYPE I,
+      L_LASTLINE    TYPE I,
+      L_LINE        TYPE I,
+      L_TABLE_NAME  LIKE FIELD-NAME.
+
+FIELD-SYMBOLS: <TC>    TYPE cxtab_control,
+               <TABLE> TYPE STANDARD TABLE,
+               <WA>    TYPE ANY,
+               <LINES> TYPE I.
+
+ASSIGN (P_TC_NAME) TO <TC>.
+CONCATENATE P_TABLE_NAME '[]' INTO L_TABLE_NAME.
+ASSIGN (L_TABLE_NAME) TO <TABLE>.
+
+GET CURSOR LINE L_SELLINE.
+IF SY-SUBRC <> 0.
+  L_SELLINE = <TC>-LINES + 1.
+  IF L_SELLINE < <LINES>.
+    <TC>-TOP_LINE = L_SELLINE - <LINES> + 1.
+  ELSE.
+    <TC>-TOP_LINE = 1.
+  ENDIF.
+ELSE.
+  L_SELLINE = <TC>-TOP_LINE + L_SELLINE - 1.
+  L_LASTLINE = <TC>-TOP_LINE + <LINES> - 1.
+ENDIF.
+
+L_LINE = L_SELLINE - <TC>-TOP_LINE + 1.
+
+INSERT INITIAL LINE INTO <TABLE> INDEX L_SELLINE.
+<TC>-LINES = <TC>-LINES + 1.
+
+SET CURSOR LINE L_LINE.
+
+ENDFORM.
+
+*--------------------------------------------------------------------*
+* Form FCODE_DELETE_ROW
+*--------------------------------------------------------------------*
+FORM fcode_delete_row USING P_TC_NAME TYPE DYNNAM
+                          P_TABLE_NAME
+                          P_MARK_NAME.
+
+DATA L_TABLE_NAME LIKE FIELD-NAME.
+
+FIELD-SYMBOLS: <TC>        TYPE cxtab_control,
+               <TABLE>     TYPE STANDARD TABLE,
+               <WA>        TYPE ANY,
+               <MARK_FIELD> TYPE ANY.
+
+ASSIGN (P_TC_NAME) TO <TC>.
+CONCATENATE P_TABLE_NAME '[]' INTO L_TABLE_NAME.
+ASSIGN (L_TABLE_NAME) TO <TABLE>.
+
+DESCRIBE TABLE <TABLE> LINES <TC>-LINES.
+
+LOOP AT <TABLE> ASSIGNING <WA>.
+  ASSIGN COMPONENT P_MARK_NAME OF STRUCTURE <WA> TO <MARK_FIELD>.
+  IF <MARK_FIELD> = 'X'.
+    DELETE <TABLE> INDEX SYST-TABIX.
+    IF SY-SUBRC = 0.
+      <TC>-LINES = <TC>-LINES - 1.
+    ENDIF.
+  ENDIF.
+ENDLOOP.
+
+ENDFORM.
+
+*--------------------------------------------------------------------*
+* Form COMPUTE_SCROLLING_IN_TC
+*--------------------------------------------------------------------*
+FORM compute_scrolling_in_tc USING P_TC_NAME
+                                P_OK.
+
+DATA: L_TC_NEW_TOP_LINE TYPE I,
+      L_TC_NAME         LIKE FIELD-NAME,
+      L_TC_LINES_NAME   LIKE FIELD-NAME,
+      L_TC_FIELD_NAME   LIKE FIELD-NAME.
+
+FIELD-SYMBOLS: <TC>    TYPE cxtab_control,
+               <LINES> TYPE I.
+
+ASSIGN (P_TC_NAME) TO <TC>.
+CONCATENATE 'G' '_' P_TC_NAME '_LINES' INTO L_TC_LINES_NAME.
+ASSIGN (L_TC_LINES_NAME) TO <LINES>.
+
+IF <TC>-LINES = 0.
+  L_TC_NEW_TOP_LINE = 1.
+ELSE.
+  CALL FUNCTION 'SCROLLING_IN_TABLE'
+    EXPORTING
+      ENTRY_ACT      = <TC>-TOP_LINE
+      ENTRY_FROM     = 1
+      ENTRY_TO       = <TC>-LINES
+      LAST_PAGE_FULL = 'X'
+      LOOPS          = <LINES>
+      OK_CODE        = P_OK
+      OVERLAPPING    = 'X'
+    IMPORTING
+      ENTRY_NEW      = L_TC_NEW_TOP_LINE
+    EXCEPTIONS
+      NO_ENTRY_OR_PAGE_ACT = 01
+      NO_ENTRY_TO           = 02
+      NO_OK_CODE_OR_PAGE_GO = 03
+      OTHERS                = 0.
+  IF SY-SUBRC <> 0.
+    L_TC_NEW_TOP_LINE = 1.
+  ENDIF.
+ENDIF.
+
+GET CURSOR FIELD L_TC_FIELD_NAME
+           AREA  L_TC_NAME.
+
+IF SYST-SUBRC = 0.
+  IF L_TC_NAME = P_TC_NAME.
+    SET CURSOR FIELD L_TC_FIELD_NAME LINE 1.
+  ENDIF.
+ENDIF.
+
+<TC>-TOP_LINE = L_TC_NEW_TOP_LINE.
+
+ENDFORM.
+
+*--------------------------------------------------------------------*
+* Form FCODE_TC_MARK_LINES
+*--------------------------------------------------------------------*
+FORM fcode_tc_mark_lines USING P_TC_NAME
+                             P_TABLE_NAME
+                             P_MARK_NAME.
+
+DATA L_TABLE_NAME LIKE FIELD-NAME.
+
+FIELD-SYMBOLS: <TC>    TYPE cxtab_control,
+               <TABLE> TYPE STANDARD TABLE,
+               <WA>    TYPE ANY,
+               <MARK_FIELD> TYPE ANY.
+
+ASSIGN (P_TC_NAME) TO <TC>.
+CONCATENATE P_TABLE_NAME '[]' INTO L_TABLE_NAME.
+ASSIGN (L_TABLE_NAME) TO <TABLE>.
+
+LOOP AT <TABLE> ASSIGNING <WA>.
+  ASSIGN COMPONENT P_MARK_NAME OF STRUCTURE <WA> TO <MARK_FIELD>.
+  <MARK_FIELD> = 'X'.
+ENDLOOP.
+
+ENDFORM.
+
+*--------------------------------------------------------------------*
+* Form FCODE_TC_DEMARK_LINES
+*--------------------------------------------------------------------*
+FORM fcode_tc_demark_lines USING P_TC_NAME
+                                P_TABLE_NAME
+                                P_MARK_NAME.
+
+DATA L_TABLE_NAME LIKE FIELD-NAME.
+
+FIELD-SYMBOLS: <TC>    TYPE cxtab_control,
+               <TABLE> TYPE STANDARD TABLE,
+               <WA>    TYPE ANY,
+               <MARK_FIELD> TYPE ANY.
+
+ASSIGN (P_TC_NAME) TO <TC>.
+CONCATENATE P_TABLE_NAME '[]' INTO L_TABLE_NAME.
+ASSIGN (L_TABLE_NAME) TO <TABLE>.
+
+LOOP AT <TABLE> ASSIGNING <WA>.
+  ASSIGN COMPONENT P_MARK_NAME OF STRUCTURE <WA> TO <MARK_FIELD>.
+  <MARK_FIELD> = SPACE.
+ENDLOOP.
+
+ENDFORM.
+
+*--------------------------------------------------------------------*
+* Form FCODE_SORT_TC
+*--------------------------------------------------------------------*
+FORM fcode_sort_tc USING P_TC_NAME
+                         P_OK.
+  " Implement sorting logic if required
+ENDFORM.
+
+*--------------------------------------------------------------------*
+* MODULES for screen 9003
+*--------------------------------------------------------------------*
+MODULE status_9003 OUTPUT.
+  SET PF-STATUS 'BUTTON13'.
+  SET TITLEBAR 'XXX'.
+ENDMODULE.
+
+MODULE get_data OUTPUT.
+  SELECT * FROM ZSCH INTO TABLE IT UP TO 10 ROWS.
+ENDMODULE.
+
+MODULE user_command_9003 INPUT.
+  CASE SY-UCOMM.
+    WHEN 'BACK'.
+      LEAVE PROGRAM.
+  ENDCASE.
+ENDMODULE.
